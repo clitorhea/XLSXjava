@@ -32,6 +32,7 @@ public class ProcessExcel {
             String filePath = file.getOriginalFilename();
             byte[] fileByte = file.getBytes();
 
+            assert filePath != null;
             FileOutputStream fos = new FileOutputStream(filePath);
             fos.write(fileByte);
             fos.flush();
@@ -51,9 +52,13 @@ public class ProcessExcel {
     @PostMapping(value = "/processTest" , produces = MediaType.TEXT_PLAIN_VALUE)
     public ResponseEntity<?> processTest(@RequestParam ("file") MultipartFile file){
         try{
+            if(file == null){
+                return ResponseEntity.ofNullable("File not Found");
+            }
             String filePath = file.getOriginalFilename();
             byte[] fileBytes = file.getBytes() ;
 
+            assert filePath != null;
             FileOutputStream fos = new FileOutputStream(filePath);
             fos.write(fileBytes);
             fos.flush();

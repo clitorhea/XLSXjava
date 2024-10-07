@@ -21,6 +21,11 @@ public class ProcessExcel {
     @Autowired
     private ExcelService excelService;
 
+    @GetMapping(value = "/test")
+    public ResponseEntity<?> testMethod(){
+        return ResponseEntity.ok("Ok");
+    }
+
     @PostMapping(value = "/process" , produces = MediaType.TEXT_PLAIN_VALUE)
     public ResponseEntity<byte[]> processExcelFile(@RequestParam("file") MultipartFile file) {
         try {
@@ -41,6 +46,25 @@ public class ProcessExcel {
         } catch (IOException e) {
             return ResponseEntity.status(500).body(null);
         }
+    }
+
+    @PostMapping(value = "/processTest" , produces = MediaType.TEXT_PLAIN_VALUE)
+    public ResponseEntity<?> processTest(@RequestParam ("file") MultipartFile file){
+        try{
+            String filePath = file.getOriginalFilename();
+            byte[] fileBytes = file.getBytes() ;
+
+            FileOutputStream fos = new FileOutputStream(filePath);
+            fos.write(fileBytes);
+            fos.flush();
+
+            fos.close();
+
+            return ResponseEntity.ok(filePath) ;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
     }
 
 }

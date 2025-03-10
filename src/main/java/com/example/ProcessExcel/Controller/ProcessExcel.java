@@ -41,28 +41,42 @@ public class ProcessExcel {
             // Get column indexes from application.properties
             List<Integer> columnsToDelete = columnConfig.getSortedColumnsToDelete();
 
+            // Sort in descending order to prevent shifting issues
+            Collections.sort(columnsToDelete, Collections.reverseOrder());
+
             // Process each row
             for (Row row : sheet) {
                 int lastCell = row.getLastCellNum();  // Get last column index
 
-                // Shift left starting from the highest index to avoid shifting issues
                 for (int colIndex : columnsToDelete) {
                     if (colIndex < lastCell) { // Ensure the column exists
                         for (int i = colIndex; i < lastCell - 1; i++) {
-                            Cell currentCell = row.getCell(i);
-                            Cell nextCell = row.getCell(i + 1);
+                            Cell currentCell = row.getCell(i, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
+                            Cell nextCell = row.getCell(i + 1, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
 
-                            if (nextCell != null) {
-                                if (currentCell == null) {
-                                    currentCell = row.createCell(i);
-                                }
-                                currentCell.setCellValue(nextCell.toString()); // Move value left
-                            } else {
-                                if (currentCell != null) {
-                                    row.removeCell(currentCell); // Remove empty cell
-                                }
+                            // Preserve data types when shifting
+                            switch (nextCell.getCellType()) {
+                                case STRING:
+                                    currentCell.setCellValue(nextCell.getStringCellValue());
+                                    break;
+                                case NUMERIC:
+                                    currentCell.setCellValue(nextCell.getNumericCellValue());
+                                    break;
+                                case BOOLEAN:
+                                    currentCell.setCellValue(nextCell.getBooleanCellValue());
+                                    break;
+                                case FORMULA:
+                                    currentCell.setCellFormula(nextCell.getCellFormula());
+                                    break;
+                                case BLANK:
+                                    currentCell.setBlank();
+                                    break;
+                                default:
+                                    currentCell.setCellValue(nextCell.toString()); // Fallback
                             }
                         }
+                        // Remove the last cell after shifting
+                        row.removeCell(row.getCell(lastCell - 1));
                     }
                 }
             }
@@ -81,6 +95,8 @@ public class ProcessExcel {
         } catch (IOException e) {
             return ResponseEntity.badRequest().body(("Error processing file: " + e.getMessage()).getBytes());
         }
+
+
     }
 
     @PostMapping(value = "/processTest" , produces = MediaType.TEXT_PLAIN_VALUE)

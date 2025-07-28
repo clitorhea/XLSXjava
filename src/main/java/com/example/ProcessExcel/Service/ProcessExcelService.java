@@ -24,6 +24,12 @@ public class ProcessExcelService {
     @Autowired
     private ColumnConfig columnConfig;
 
+    public byte[] genWatch(MultipartFile file) throws IOException {
+        try{
+            
+        }
+    }
+
     public byte[] processExcelFile(MultipartFile file) throws IOException {
         try (InputStream inputStream = file.getInputStream();
              Workbook workbook = new XSSFWorkbook(inputStream);

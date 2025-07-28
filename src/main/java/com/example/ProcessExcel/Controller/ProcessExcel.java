@@ -51,4 +51,15 @@ public class ProcessExcel {
             return ResponseEntity.internalServerError().body(Map.of("error", "Error processing file: " + e.getMessage()));
         }
     }
+
+    @PostMapping("/watch")
+    public ResponseEntity<?> genWatch(@RequestParam("file") MultipartFile file){
+        if(file.isEmpty || file.getOriginalFilename() == null || !file.getOriginalFilename().endsWith("xlsx")){
+            return ResponseEntity.badRequest().body(Map.of("error" , "Invalid file")) ; 
+        }
+        try{
+            
+            
+        }
+    }
 }

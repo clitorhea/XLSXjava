@@ -1,0 +1,168 @@
+package com.example.ProcessExcel.Service;
+
+import com.example.ProcessExcel.Config.ColumnConfig;
+import com.example.ProcessExcel.Model.Watch;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class ExcelServiceImpl implements ExcelService {
+
+    @Autowired
+    private ColumnConfig columnConfig;
+
+    @Override
+    public byte[] processExcel(MultipartFile file) throws IOException {
+        try (InputStream inputStream = file.getInputStream();
+             Workbook workbook = new XSSFWorkbook(inputStream);
+             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+
+            Sheet sheet = workbook.getSheetAt(0);
+            List<Integer> columnsToDelete = columnConfig.getSortedColumnsToDelete();
+
+            int maxColumns = sheet.getRow(0) != null ? sheet.getRow(0).getLastCellNum() : 0;
+            for (int colIndex : columnsToDelete) {
+                if (colIndex < 0 || colIndex >= maxColumns) {
+                    throw new IOException("Invalid column index: " + colIndex);
+                }
+            }
+
+            deleteExcelColumns(sheet, columnsToDelete);
+
+            workbook.write(outputStream);
+            return outputStream.toByteArray();
+        }
+    }
+
+    @Override
+    public List<Watch> extractWatches(MultipartFile file) throws IOException {
+        try (InputStream inputStream = file.getInputStream();
+             Workbook workbook = new XSSFWorkbook(inputStream)) {
+
+            Sheet watchSheet = workbook.getSheetAt(0);
+            Sheet priceSheet = workbook.getSheetAt(1);
+
+            if (watchSheet == null || priceSheet == null) {
+                throw new IOException("The Excel file must have at least two sheets.");
+            }
+
+            Map<String, Integer> priceMap = new HashMap<>();
+            for (Row row : priceSheet) {
+                Cell stockCodeCell = row.getCell(0);
+                Cell priceCell = row.getCell(1);
+
+                if (stockCodeCell != null && priceCell != null && stockCodeCell.getCellType() == CellType.STRING && priceCell.getCellType() == CellType.NUMERIC) {
+                    priceMap.put(stockCodeCell.getStringCellValue(), (int) priceCell.getNumericCellValue());
+                }
+            }
+
+            List<Watch> watches = new ArrayList<>();
+            for (Row row : watchSheet) {
+                if (row.getRowNum() == 0) {
+                    continue; // Skip header row
+                }
+
+                Watch watch = new Watch();
+                Cell nameCell = row.getCell(0);
+                if (nameCell != null) {
+                    watch.setName(nameCell.getStringCellValue());
+                }
+
+                Cell partNumCell = row.getCell(1);
+                if (partNumCell != null) {
+                    watch.setPartNum(partNumCell.getStringCellValue());
+                }
+
+                Cell stockCodeCell = row.getCell(2);
+                if (stockCodeCell != null) {
+                    String stockCode = stockCodeCell.getStringCellValue();
+                    watch.setStockCode(stockCode);
+                    if (priceMap.containsKey(stockCode)) {
+                        watch.setPrice(priceMap.get(stockCode));
+                    }
+                }
+
+                watches.add(watch);
+            }
+
+            return watches;
+        }
+    }
+
+    private void deleteExcelColumns(Sheet sheet, List<Integer> columnsToDelete) {
+        for (int colIndex : columnsToDelete) {
+            for (Row row : sheet) {
+                for (int i = colIndex; i < row.getLastCellNum() - 1; i++) {
+                    Cell oldCell = row.getCell(i + 1, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
+                    Cell newCell = row.getCell(i, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
+                    copyCell(oldCell, newCell);
+                }
+                Cell lastCell = row.getCell(row.getLastCellNum() - 1);
+                if (lastCell != null) {
+                    row.removeCell(lastCell);
+                }
+            }
+
+            for (int i = 0; i < sheet.getNumMergedRegions(); i++) {
+                CellRangeAddress mergedRegion = sheet.getMergedRegion(i);
+                if (mergedRegion.getFirstColumn() == colIndex) {
+                    sheet.removeMergedRegion(i);
+                    i--;
+                } else if (mergedRegion.getFirstColumn() > colIndex) {
+                    mergedRegion.setFirstColumn(mergedRegion.getFirstColumn() - 1);
+                }
+
+                if (mergedRegion.getLastColumn() == colIndex) {
+                    sheet.removeMergedRegion(i);
+                    i--;
+                } else if (mergedRegion.getLastColumn() > colIndex) {
+                    mergedRegion.setLastColumn(mergedRegion.getLastColumn() - 1);
+                }
+            }
+        }
+    }
+
+    private void copyCell(Cell oldCell, Cell newCell) {
+        newCell.setCellStyle(oldCell.getCellStyle());
+
+        if (oldCell.getCellComment() != null) {
+            newCell.setCellComment(oldCell.getCellComment());
+        }
+
+        if (oldCell.getHyperlink() != null) {
+            newCell.setHyperlink(oldCell.getHyperlink());
+        }
+
+        switch (oldCell.getCellType()) {
+            case STRING:
+                newCell.setCellValue(oldCell.getStringCellValue());
+                break;
+            case NUMERIC:
+                newCell.setCellValue(oldCell.getNumericCellValue());
+                break;
+            case BOOLEAN:
+                newCell.setCellValue(oldCell.getBooleanCellValue());
+                break;
+            case FORMULA:
+                newCell.setCellFormula(oldCell.getCellFormula());
+                break;
+            case BLANK:
+                newCell.setBlank();
+                break;
+            default:
+                break;
+        }
+    }
+}

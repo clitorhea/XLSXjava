@@ -101,37 +101,49 @@ public class ExcelServiceImpl implements ExcelService {
         }
     }
 
-    private void deleteExcelColumns(Sheet sheet, List<Integer> columnsToDelete) {
-        for (int colIndex : columnsToDelete) {
-            for (Row row : sheet) {
-                for (int i = colIndex; i < row.getLastCellNum() - 1; i++) {
-                    Cell oldCell = row.getCell(i + 1, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
-                    Cell newCell = row.getCell(i, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
-                    copyCell(oldCell, newCell);
-                }
-                Cell lastCell = row.getCell(row.getLastCellNum() - 1);
-                if (lastCell != null) {
-                    row.removeCell(lastCell);
-                }
+    private void deleteExcelColumns(Sheet oldSheet, List<Integer> columnsToDelete) {
+        Workbook workbook = oldSheet.getWorkbook();
+        Sheet newSheet = workbook.createSheet("temp_sheet");
+
+        // Copy rows and cells, skipping the deleted columns
+        for (int i = 0; i < oldSheet.getPhysicalNumberOfRows(); i++) {
+            Row oldRow = oldSheet.getRow(i);
+            Row newRow = newSheet.createRow(i);
+            if (oldRow == null) {
+                continue;
             }
+            newRow.setHeight(oldRow.getHeight());
 
-            for (int i = 0; i < sheet.getNumMergedRegions(); i++) {
-                CellRangeAddress mergedRegion = sheet.getMergedRegion(i);
-                if (mergedRegion.getFirstColumn() == colIndex) {
-                    sheet.removeMergedRegion(i);
-                    i--;
-                } else if (mergedRegion.getFirstColumn() > colIndex) {
-                    mergedRegion.setFirstColumn(mergedRegion.getFirstColumn() - 1);
-                }
-
-                if (mergedRegion.getLastColumn() == colIndex) {
-                    sheet.removeMergedRegion(i);
-                    i--;
-                } else if (mergedRegion.getLastColumn() > colIndex) {
-                    mergedRegion.setLastColumn(mergedRegion.getLastColumn() - 1);
+            int newCellIdx = 0;
+            for (int j = 0; j < oldRow.getLastCellNum(); j++) {
+                if (!columnsToDelete.contains(j)) {
+                    Cell oldCell = oldRow.getCell(j);
+                    if (oldCell != null) {
+                        Cell newCell = newRow.createCell(newCellIdx++);
+                        copyCell(oldCell, newCell);
+                    }
                 }
             }
         }
+
+        // Copy merged regions, adjusting for deleted columns
+        for (int i = 0; i < oldSheet.getNumMergedRegions(); i++) {
+            CellRangeAddress mergedRegion = oldSheet.getMergedRegion(i);
+            int firstCol = mergedRegion.getFirstColumn();
+            int lastCol = mergedRegion.getLastColumn();
+
+            if (!columnsToDelete.contains(firstCol) && !columnsToDelete.contains(lastCol)) {
+                int newFirstCol = firstCol - (int) columnsToDelete.stream().filter(c -> c < firstCol).count();
+                int newLastCol = lastCol - (int) columnsToDelete.stream().filter(c -> c < lastCol).count();
+                newSheet.addMergedRegion(new CellRangeAddress(mergedRegion.getFirstRow(), mergedRegion.getLastRow(), newFirstCol, newLastCol));
+            }
+        }
+
+        // Remove the old sheet and rename the new one
+        int sheetIndex = workbook.getSheetIndex(oldSheet);
+        String sheetName = oldSheet.getSheetName();
+        workbook.removeSheetAt(sheetIndex);
+        workbook.setSheetName(workbook.getSheetIndex(newSheet), sheetName);
     }
 
     private void copyCell(Cell oldCell, Cell newCell) {
